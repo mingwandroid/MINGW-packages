@@ -1,0 +1,1085 @@
+From b658ea5e8f116f56a6e1fcc230bc1f530681d3a0 Mon Sep 17 00:00:00 2001
+From: Ray Donnelly <mingw.android@gmail.com>
+Date: Tue, 9 Aug 2016 11:49:35 +0100
+Subject: [PATCH 3/7] Win32: MSVC and conda fixes
+
+---
+ CMakeCompiler.txt                                  |  2 +-
+ dependencies/windows/install-dependencies.cmd      | 80 ++++++++++++----------
+ src/cpp/CMakeLists.txt                             | 68 +++++++++++-------
+ src/cpp/core/CMakeLists.txt                        |  6 +-
+ src/cpp/core/RegexUtils.cpp                        |  3 +
+ src/cpp/core/StringUtils.cpp                       | 20 ++++++
+ src/cpp/core/file_lock/LinkBasedFileLock.cpp       |  2 +
+ src/cpp/core/include/core/Macros.hpp               |  5 +-
+ src/cpp/core/include/core/r_util/RSourceIndex.hpp  |  1 +
+ src/cpp/core/include/core/system/System.hpp        |  4 +-
+ src/cpp/core/spelling/hunspell/CMakeLists.txt      | 12 +++-
+ src/cpp/core/spelling/hunspell/hunvisapi.h         |  4 +-
+ src/cpp/core/system/Win32OutputCapture.cpp         |  7 +-
+ src/cpp/core/tex/synctex/synctex_parser.c          | 22 +++---
+ src/cpp/core/zlib/gzguts.h                         |  3 +-
+ src/cpp/core/zlib/zconf.h                          |  2 +-
+ src/cpp/desktop/CMakeLists.txt                     | 18 +++--
+ src/cpp/desktop/DesktopMain.cpp                    | 15 +++-
+ src/cpp/desktop/DesktopRVersion.cpp                |  3 +-
+ src/cpp/desktop/DesktopWordViewer.hpp              |  3 +-
+ src/cpp/desktop/rstudio.rc.in                      |  1 -
+ src/cpp/desktop/synctex/rsinverse/CMakeLists.txt   | 35 ++++++----
+ src/cpp/desktop/synctex/rsinverse/rsinverse.rc.in  |  1 -
+ src/cpp/desktop/urlopener/CMakeLists.txt           | 33 +++++----
+ src/cpp/desktop/urlopener/urlopener.rc.in          |  1 -
+ src/cpp/diagnostics/CMakeLists.txt                 | 30 ++++----
+ src/cpp/diagnostics/diagnostics.rc.in              |  1 -
+ src/cpp/r/session/graphics/RGraphicsDevDesc.hpp    |  7 ++
+ src/cpp/session/CMakeLists.txt                     | 34 +++++----
+ src/cpp/session/consoleio/CMakeLists.txt           | 30 ++++----
+ src/cpp/session/consoleio/consoleio.rc.in          |  1 -
+ .../http/SessionHttpConnectionListenerImpl.hpp     |  2 +-
+ src/cpp/session/modules/SessionSource.cpp          |  2 +-
+ src/cpp/session/rsession.rc.in                     |  1 -
+ 34 files changed, 285 insertions(+), 174 deletions(-)
+
+diff --git a/CMakeCompiler.txt b/CMakeCompiler.txt
+index ec0a113..f7d1a59 100644
+--- a/CMakeCompiler.txt
++++ b/CMakeCompiler.txt
+@@ -27,7 +27,7 @@ if(APPLE)
+ endif()
+ 
+ # use Rtools on Windows (mainly for Qt Creator)
+-if(WIN32 AND NOT DEFINED RSTUDIO_PACKAGE_BUILD)
++if(WIN32 AND NOT DEFINED RSTUDIO_PACKAGE_BUILD AND NOT DEFINED ENV{CONDA_BUILD})
+   set(RTOOLS_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../dependencies/windows/Rtools33")
+   string(REGEX REPLACE "/" "\\\\" RTOOLS_TOOLCHAIN_32BIT_PATH "${RTOOLS_PATH}/mingw_32/bin")
+   set(ENV{PATH} "${RTOOLS_TOOLCHAIN_32BIT_PATH}")
+diff --git a/dependencies/windows/install-dependencies.cmd b/dependencies/windows/install-dependencies.cmd
+index 7f0de78..eaf5e64 100644
+--- a/dependencies/windows/install-dependencies.cmd
++++ b/dependencies/windows/install-dependencies.cmd
+@@ -30,47 +30,50 @@ set LIBCLANG_HEADERS=builtin-headers
+ set LIBCLANG_HEADERS_FILE=libclang-%LIBCLANG_HEADERS%.zip
+ 
+ set RTOOLS_DIR=%RTOOLS_FILE:.exe=%
+-if not exist %RTOOLS_DIR% (
+-  wget %WGET_ARGS% "%BASEURL%%RTOOLS_FILE%"
+-  echo Installing '%RTOOLS_FILE%' -- please wait...
+-  start /wait Rtools33.exe /verysilent /dir=%CD%\%RTOOLS_DIR%
+-  if %ERRORLEVEL% EQU 0 (
+-    echo '%RTOOLS_FILE%' successfully installed!
+-    del %RTOOLS_FILE%
+-  ) else (
+-    echo Failed to install '%RTOOLS_FILE%'!
++
++if not "%CONDA_BUILD%" == "1" (
++  if not exist %RTOOLS_DIR% (
++    wget %WGET_ARGS% "%BASEURL%%RTOOLS_FILE%"
++    echo Installing '%RTOOLS_FILE%' -- please wait...
++    start /wait Rtools33.exe /verysilent /dir=%CD%\%RTOOLS_DIR%
++    if %ERRORLEVEL% EQU 0 (
++      echo '%RTOOLS_FILE%' successfully installed!
++      del %RTOOLS_FILE%
++    ) else (
++      echo Failed to install '%RTOOLS_FILE%'!
++    )
+   )
+-)
+ 
+-if not exist boost-1.50-win-rtools33-gcc493 (
+-  wget %WGET_ARGS% "%BASEURL%%BOOST_GCC493_FILE%"
+-  echo Unzipping %BOOST_GCC493_FILE%
+-  unzip %UNZIP_ARGS% "%BOOST_GCC493_FILE%" -d boost-1.50-win-rtools33-gcc493
+-  del "%BOOST_GCC493_FILE%"
+-)
++  if not exist boost-1.50-win-rtools33-gcc493 (
++    wget %WGET_ARGS% "%BASEURL%%BOOST_GCC493_FILE%"
++    echo Unzipping %BOOST_GCC493_FILE%
++    unzip %UNZIP_ARGS% "%BOOST_GCC493_FILE%" -d boost-1.50-win-rtools33-gcc493
++    del "%BOOST_GCC493_FILE%"
++  )
+ 
+-if not exist gnudiff (
+-  wget %WGET_ARGS% "%BASEURL%%GNUDIFF_FILE%"
+-  mkdir gnudiff
+-  echo Unzipping %GNUDIFF_FILE%
+-  unzip %UNZIP_ARGS% "%GNUDIFF_FILE%" -d gnudiff
+-  del "%GNUDIFF_FILE%"
+-)
++  if not exist gnudiff (
++    wget %WGET_ARGS% "%BASEURL%%GNUDIFF_FILE%"
++    mkdir gnudiff
++    echo Unzipping %GNUDIFF_FILE%
++    unzip %UNZIP_ARGS% "%GNUDIFF_FILE%" -d gnudiff
++    del "%GNUDIFF_FILE%"
++  )
+ 
+-if not exist gnugrep (
+-  wget %WGET_ARGS% "%BASEURL%%GNUGREP_FILE%"
+-  mkdir gnugrep
+-  echo Unzipping %GNUGREP_FILE%
+-  unzip %UNZIP_ARGS% "%GNUGREP_FILE%" -d gnugrep
+-  del "%GNUGREP_FILE%"
+-)
++  if not exist gnugrep (
++    wget %WGET_ARGS% "%BASEURL%%GNUGREP_FILE%"
++    mkdir gnugrep
++    echo Unzipping %GNUGREP_FILE%
++    unzip %UNZIP_ARGS% "%GNUGREP_FILE%" -d gnugrep
++    del "%GNUGREP_FILE%"
++  )
+ 
+-if not exist msys-ssh-1000-18 (
+-  wget %WGET_ARGS% "%BASEURL%%MSYS_SSH_FILE%"
+-  mkdir msys-ssh-1000-18
+-  echo Unzipping %MSYS_SSH_FILE%
+-  unzip %UNZIP_ARGS% "%MSYS_SSH_FILE%" -d msys-ssh-1000-18
+-  del "%MSYS_SSH_FILE%"
++  if not exist msys-ssh-1000-18 (
++    wget %WGET_ARGS% "%BASEURL%%MSYS_SSH_FILE%"
++    mkdir msys-ssh-1000-18
++    echo Unzipping %MSYS_SSH_FILE%
++    unzip %UNZIP_ARGS% "%MSYS_SSH_FILE%" -d msys-ssh-1000-18
++    del "%MSYS_SSH_FILE%"
++  )
+ )
+ 
+ if not exist sumatra\3.1.1 (
+@@ -169,8 +172,9 @@ if not exist libclang\%LIBCLANG_HEADERS% (
+ )
+ 
+ 
+-
+-install-packages.cmd
++if not "%CONDA_BUILD%" == "1" (
++  install-packages.cmd
++)
+ 
+ popd
+ 
+diff --git a/src/cpp/CMakeLists.txt b/src/cpp/CMakeLists.txt
+index 1f3f813..3200646 100644
+--- a/src/cpp/CMakeLists.txt
++++ b/src/cpp/CMakeLists.txt
+@@ -89,28 +89,42 @@ if(UNIX)
+ 
+ # Win32 specific global directives
+ else()
+-   add_definitions(-DWINVER=0x501)
+-
+-   if(RSTUDIO_SESSION_WIN64)
+-
+-      # increase stack size to 20MB, avoid mingw auto-importing warning,
+-      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--stack=0x01400000,--enable-auto-import,--allow-multiple-definition")
+-
+-      add_definitions(-D_WIN64
+-                      -D_WIN64_WINNT=0x0501
+-                      -D_WIN64_IE=0x600
+-                      -DWIN64_LEAN_AND_MEAN
+-                      -DBOOST_USE_WINDOWS_H)
++   if(MSVC)
++      add_definitions(-DNOMINMAX)  # error C2589: '(': illegal token on right side of '::'
++      add_definitions(-D_CRT_SECURE_NO_WARNINGS)  # 'fopen,freopen,sprintf,strcat,strcpy,strerror,strncpy,wcstok': This function or variable may be unsafe. Consider using _s instead.
++      add_definitions(-D_SCL_SECURE_NO_WARNINGS)  # Call to 'std::copy' with parameters that may be unsafe - this call relies on the caller to check that the passed values are correct / 'std::basic_string<charstd::char_traits<char>,std::allocator<char>>::copy': Function call with parameters that may be unsafe  - this call relies on the caller to check that the passed values are correct.
++      add_definitions(-DBOOST_SIGNALS_NO_DEPRECATION_WARNING)  # Boost.Signals is no longer being maintained and is now deprecated. Please switch to Boost.Signals2.
++      add_compile_options("-bigobj")  # json_spirit_reader.cpp : fatal error C1128: number of sections exceeded object file format limit: compile with /bigobj
++      add_compile_options("-wd4244")  # conversion from '<bigger>' to '<smaller>', possible loss of data
++      add_compile_options("-wd4267")  # conversion from 'size_t' to '<smaller>', possible loss of data
++      # 305: 'argument': truncation from 'size_t' to 'int'
++      add_compile_options("-wd4091")  # '__declspec(dllimport)': ignored on left of '<identifier>' when no variable is declared
++      add_compile_options("-wd4390")  # ';': empty controlled statement found; is this the intent?
++      add_compile_options("-wd4800")  # forcing value to bool 'true' or 'false'
++      add_compile_options("-wd4996")  # 'close,getpid,open,read,wcstok,write': This function or variable may be unsafe. Consider using _s instead.
++   endif()
++   add_definitions(-DWINVER=0x501
++                   -D_WIN32_WINNT=0x0501
++                   -D_WIN32_IE=0x600
++                   -DWIN32_LEAN_AND_MEAN
++                   -DBOOST_USE_WINDOWS_H)
++
++   if(CMAKE_SIZEOF_VOID_P EQUAL 8)
++      set(NEEDS_LARGE_ADDRESS "")
++      add_definitions(-D_WIN64)
+    else()
+-
+-      # increase stack size to 20MB, avoid mingw auto-importing warning,
++      if(MSVC)
++         set(NEEDS_LARGE_ADDRESS "-LARGEADDRESSAWARE")
++      elseif(MINGW)
++         set(NEEDS_LARGE_ADDRESS "--large-address-aware")
++      endif(MSVC)
++   endif()
++   if(MSVC)
++      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -STACK:0x01400000 ${NEEDS_LARGE_ADDRESS}")
++   elseif(MINGW)
++         # increase stack size to 20MB, avoid mingw auto-importing warning,
+       # and ensure that we are large address aware
+-      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--stack=0x01400000,--enable-auto-import,--large-address-aware,--allow-multiple-definition")
+-
+-      add_definitions(-D_WIN32_WINNT=0x0501
+-                      -D_WIN32_IE=0x600
+-                      -DWIN32_LEAN_AND_MEAN
+-                      -DBOOST_USE_WINDOWS_H)
++      set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--stack=0x01400000,--enable-auto-import,${NEEDS_LARGE_ADDRESS},--allow-multiple-definition")
+    endif()
+ 
+ endif()
+@@ -122,8 +136,8 @@ if(APPLE OR WIN32 OR RSTUDIO_PACKAGE_BUILD)
+    set(Boost_USE_STATIC_LIBS ON)
+ endif()
+ 
+-# require boost 1.50
+-set(BOOST_VERSION 1.50.0)
++# default to boost 1.50 but let the user override it.
++set(BOOST_VERSION 1.50.0 CACHE STRING "Boost version to use")
+ 
+ list(APPEND BOOST_LIBS
+    date_time
+@@ -135,10 +149,12 @@ list(APPEND BOOST_LIBS
+    system
+    thread
+    chrono
++   timer
++   locale
+ )
+ 
+-# UNIX BOOST
+-if(UNIX)
++# UNIX BOOST (OR MSVC, FOR CONDA)
++if(UNIX OR MSVC OR DEFINED ENV{CONDA_BUILD})
+    # prefer static link to our custom built version
+    set(RSTUDIO_TOOLS_BOOST /opt/rstudio-tools/boost/boost_1_50_0)
+    if(EXISTS ${RSTUDIO_TOOLS_BOOST})
+@@ -160,7 +176,7 @@ if(UNIX)
+ else()
+      # hard-code to our own prebuilt boost libs
+      set(Boost_COMPILER "-mgw49")
+-     if(RSTUDIO_SESSION_WIN64)
++     if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+         set(BOOST_ARCH "64")
+      else()
+         set(BOOST_ARCH "32")
+@@ -210,7 +226,7 @@ else()
+    if(NOT RSTUDIO_CONFIG_MONITOR_ONLY)
+ 
+       # find LibR
+-      if(RSTUDIO_SESSION_WIN64)
++      if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+          set(LIBR_FIND_WINDOWS_64BIT TRUE)
+       endif()
+       find_package(LibR REQUIRED)
+diff --git a/src/cpp/core/CMakeLists.txt b/src/cpp/core/CMakeLists.txt
+index 78c9e1b..a69be00 100644
+--- a/src/cpp/core/CMakeLists.txt
++++ b/src/cpp/core/CMakeLists.txt
+@@ -259,7 +259,11 @@ else()
+    add_subdirectory(zlib)
+ 
+    # system libraries
+-   set (CORE_SYSTEM_LIBRARIES -lws2_32 -lmswsock -lrpcrt4 -lShlwapi)
++   if(MSVC)
++     set (CORE_SYSTEM_LIBRARIES ws2_32 mswsock rpcrt4 Shlwapi)
++   else()
++     set (CORE_SYSTEM_LIBRARIES -lws2_32 -lmswsock -lrpcrt4 -lShlwapi)
++   endif(MSVC)
+ 
+    # source files
+    set(CORE_SOURCE_FILES ${CORE_SOURCE_FILES}
+diff --git a/src/cpp/core/RegexUtils.cpp b/src/cpp/core/RegexUtils.cpp
+index 599e566..d11168a 100644
+--- a/src/cpp/core/RegexUtils.cpp
++++ b/src/cpp/core/RegexUtils.cpp
+@@ -25,6 +25,9 @@
+ #include <boost/iostreams/filtering_stream.hpp>
+ 
+ #include <core/StringUtils.hpp>
++#if defined(_MSC_VER)
++#include <sstream>
++#endif
+ 
+ namespace rstudio {
+ namespace core {
+diff --git a/src/cpp/core/StringUtils.cpp b/src/cpp/core/StringUtils.cpp
+index 58d244e..02368e7 100644
+--- a/src/cpp/core/StringUtils.cpp
++++ b/src/cpp/core/StringUtils.cpp
+@@ -241,7 +241,17 @@ std::string utf8ToSystem(const std::string& str,
+       return std::string();
+ 
+ #ifdef _WIN32
++   /* MSVC cannot handle this:
+    wchar_t wide[str.length() + 1];
++   ..
++   error C2131: expression did not evaluate to a constant
++   src\cpp\core\StringUtils.cpp(244): note: failure was caused by non-constant arguments or reference to a non-constant symbol
++   src\cpp\core\StringUtils.cpp(244): note: see usage of 'str'  */
++#ifndef _MSC_VER
++   wchar_t wide[str.length() + 1];
++#else
++   wchar_t* wide = static_cast<wchar_t*>(alloca(sizeof(wchar_t) * (str.length() + 1)));
++#endif
+    int chars = ::MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, wide, sizeof(wide));
+    if (chars < 0)
+    {
+@@ -278,7 +288,17 @@ std::string systemToUtf8(const std::string& str)
+       return std::string();
+ 
+ #ifdef _WIN32
++   /* MSVC cannot handle this:
+    wchar_t wide[str.length() + 1];
++   ..
++   error C2131: expression did not evaluate to a constant
++   src\cpp\core\StringUtils.cpp(244): note: failure was caused by non-constant arguments or reference to a non-constant symbol
++   src\cpp\core\StringUtils.cpp(244): note: see usage of 'str'  */
++#ifndef _MSC_VER
++   wchar_t wide[str.length() + 1];
++#else
++   wchar_t* wide = static_cast<wchar_t*>(alloca(sizeof(wchar_t) * (str.length() + 1)));
++#endif
+    int chars = ::MultiByteToWideChar(CP_ACP, 0, str.c_str(), str.length(), wide, sizeof(wide));
+    if (chars < 0)
+    {
+diff --git a/src/cpp/core/file_lock/LinkBasedFileLock.cpp b/src/cpp/core/file_lock/LinkBasedFileLock.cpp
+index f2f15e7..ce91386 100644
+--- a/src/cpp/core/file_lock/LinkBasedFileLock.cpp
++++ b/src/cpp/core/file_lock/LinkBasedFileLock.cpp
+@@ -19,7 +19,9 @@
+ 
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#ifndef _MSC_VER
+ #include <unistd.h>
++#endif
+ #include <fcntl.h>
+ 
+ #include <set>
+diff --git a/src/cpp/core/include/core/Macros.hpp b/src/cpp/core/include/core/Macros.hpp
+index 775f431..454b8fb 100644
+--- a/src/cpp/core/include/core/Macros.hpp
++++ b/src/cpp/core/include/core/Macros.hpp
+@@ -20,7 +20,7 @@
+ #include <iomanip>
+ 
+ /* Compatibility Macros */
+-#if __cplusplus < 201103L
++#if defined BOOST_THREAD_USES_MOVE
+ # define MOVE_THREAD(t) t.move()
+ #else
+ # define MOVE_THREAD(t) std::move(t)
+@@ -31,6 +31,9 @@
+ #if defined(__GNUC__)
+ # define LIKELY(x)   __builtin_expect(!!(x), 1)
+ # define UNLIKELY(x) __builtin_expect(!!(x), 0)
++#elif defined(_MSC_VER)
++# define LIKELY(x)   (!!(x))
++# define UNLIKELY(x) (!!(x))
+ #else
+ # define LIKELY(x)   __builtin_expect(!!(x), 1)
+ # define UNLIKELY(x) __builtin_expect(!!(x), 0)
+diff --git a/src/cpp/core/include/core/r_util/RSourceIndex.hpp b/src/cpp/core/include/core/r_util/RSourceIndex.hpp
+index 1b392a9..6f6fb4c 100644
+--- a/src/cpp/core/include/core/r_util/RSourceIndex.hpp
++++ b/src/cpp/core/include/core/r_util/RSourceIndex.hpp
+@@ -18,6 +18,7 @@
+ 
+ #include <string>
+ #include <vector>
++#include <set>
+ 
+ #include <boost/bind.hpp>
+ #include <boost/function.hpp>
+diff --git a/src/cpp/core/include/core/system/System.hpp b/src/cpp/core/include/core/system/System.hpp
+index cdbfedb..e1c3662 100644
+--- a/src/cpp/core/include/core/system/System.hpp
++++ b/src/cpp/core/include/core/system/System.hpp
+@@ -18,7 +18,9 @@
+ 
+ 
+ #if defined(_WIN32)
+-#include <windef.h>
++// Including windef.h directly on MSVC leads to:
++// C:\Program Files(x86)\Windows Kits\8.1\Include\um\winnt.h(147) : fatal error C1189 : #error:  "No Target Architecture"
++#include <windows.h>
+ typedef DWORD PidType;
+ #else  // UNIX
+ #include <sys/types.h>
+diff --git a/src/cpp/core/spelling/hunspell/CMakeLists.txt b/src/cpp/core/spelling/hunspell/CMakeLists.txt
+index c25e9ae..383e4f2 100644
+--- a/src/cpp/core/spelling/hunspell/CMakeLists.txt
++++ b/src/cpp/core/spelling/hunspell/CMakeLists.txt
+@@ -54,7 +54,17 @@ add_library(rstudio-core-hunspell STATIC
+    ${CORE_HUNSPELL_SOURCE_FILES}
+    ${CORE_HUNSPELL_HEADER_FILES})
+ 
++ add_compile_options($<TARGET_NAME:rstudio-core-hunspell>
++    -DHUNSPELL_STATIC -DBUILDING_LIBHUNSPELL
++)
++
++# .. the consumers of the static library need to define this (this *may* be
++# a CMake >=3 feature, and we may need instead to add this to the consumers
++# directly)
++set_target_properties(rstudio-core-hunspell PROPERTIES
++   INTERFACE_COMPILE_DEFINITIONS HUNSPELL_STATIC
++)
++
+ # link dependencies
+ target_link_libraries(rstudio-core-hunspell
+-
+ )
+diff --git a/src/cpp/core/spelling/hunspell/hunvisapi.h b/src/cpp/core/spelling/hunspell/hunvisapi.h
+index 4712280..db63615 100644
+--- a/src/cpp/core/spelling/hunspell/hunvisapi.h
++++ b/src/cpp/core/spelling/hunspell/hunvisapi.h
+@@ -1,6 +1,8 @@
+ #ifndef _HUNSPELL_VISIBILITY_H_
+ #define _HUNSPELL_VISIBILITY_H_
+ 
++// Unfortunately, my CMake changes are not working right.
++#define HUNSPELL_STATIC
+ #if defined(HUNSPELL_STATIC)
+ #  define LIBHUNSPELL_DLL_EXPORTED
+ #elif defined(_MSC_VER)
+@@ -9,7 +11,7 @@
+ #  else
+ #    define LIBHUNSPELL_DLL_EXPORTED __declspec(dllimport)
+ #  endif
+-#elif BUILDING_LIBHUNSPELL && 1
++#elif BUILDING_LIBHUNSPELL && !defined(_MSC_VER)
+ #  define LIBHUNSPELL_DLL_EXPORTED __attribute__((__visibility__("default")))
+ #else
+ #  define LIBHUNSPELL_DLL_EXPORTED
+diff --git a/src/cpp/core/system/Win32OutputCapture.cpp b/src/cpp/core/system/Win32OutputCapture.cpp
+index ffad56e..55caa80 100644
+--- a/src/cpp/core/system/Win32OutputCapture.cpp
++++ b/src/cpp/core/system/Win32OutputCapture.cpp
+@@ -20,7 +20,12 @@
+ 
+ #include <stdio.h>
+ #include <fcntl.h>
+-
++#ifdef _MSC_VER
++#include <io.h>
++#define STDIN_FILENO 0
++#define STDOUT_FILENO 1
++#define STDERR_FILENO 2
++#endif
+ 
+ #include <core/Log.hpp>
+ #include <core/Error.hpp>
+diff --git a/src/cpp/core/tex/synctex/synctex_parser.c b/src/cpp/core/tex/synctex/synctex_parser.c
+index a7e6eaa..f09f0df 100644
+--- a/src/cpp/core/tex/synctex/synctex_parser.c
++++ b/src/cpp/core/tex/synctex/synctex_parser.c
+@@ -119,7 +119,7 @@ typedef union _synctex_info_t {
+ } synctex_info_t;
+ 
+ #   if defined(SYNCTEX_USE_CHARINDEX)
+-#       define SYNCTEX_DECLARE_CHARINDEX synctex_charindex_t char_index
++#       define SYNCTEX_DECLARE_CHARINDEX synctex_charindex_t char_index;
+ #       define SYNCTEX_CHARINDEX(NODE) (NODE->char_index)
+ #       define SYNCTEX_PRINT_CHARINDEX printf("#%i\n",SYNCTEX_CHARINDEX(node))
+ #       define SYNCTEX_DECLARE_CHAR_OFFSET synctex_charindex_t charindex_offset
+@@ -133,8 +133,8 @@ typedef union _synctex_info_t {
+ #   endif
+ 
+ struct _synctex_node {
+-    SYNCTEX_DECLARE_CHARINDEX;
+-	synctex_class_t class;
++    SYNCTEX_DECLARE_CHARINDEX
++        synctex_class_t class;
+ 	synctex_info_t * implementation;
+ };
+ 
+@@ -357,7 +357,7 @@ SYNCTEX_MAKE_GET(_synctex_implementation_4,4)
+ SYNCTEX_MAKE_GET(_synctex_implementation_5,5)
+ 
+ typedef struct {
+-    SYNCTEX_DECLARE_CHARINDEX;
++    SYNCTEX_DECLARE_CHARINDEX
+ 	synctex_class_t class;
+ 	synctex_info_t implementation[3+SYNCTEX_PAGE_IDX+1];/*  child, sibling, next box,
+ 	                         *  SYNCTEX_PAGE_IDX */
+@@ -425,7 +425,7 @@ DEFINE_synctex_new_NODE(sheet)
+ #   define SYNCTEX_ABS_DEPTH(NODE) ((SYNCTEX_DEPTH(NODE)>0?SYNCTEX_DEPTH(NODE):-SYNCTEX_DEPTH(NODE)))
+ 
+ typedef struct {
+-    SYNCTEX_DECLARE_CHARINDEX;
++    SYNCTEX_DECLARE_CHARINDEX
+ 	synctex_class_t class;
+ 	synctex_info_t implementation[5+SYNCTEX_DEPTH_IDX+1]; /*  parent,child,sibling,friend,next box,
+ 						        *  SYNCTEX_TAG,SYNCTEX_LINE,SYNCTEX_COLUMN,
+@@ -478,7 +478,7 @@ DEFINE_synctex_new_NODE(vbox)
+ #   define SYNCTEX_ABS_DEPTH_V(NODE) ((SYNCTEX_DEPTH_V(NODE)>0?SYNCTEX_DEPTH_V(NODE):-SYNCTEX_DEPTH_V(NODE)))
+ 
+ typedef struct {
+-    SYNCTEX_DECLARE_CHARINDEX;
++    SYNCTEX_DECLARE_CHARINDEX
+ 	synctex_class_t class;
+ 	synctex_info_t implementation[5+SYNCTEX_DEPTH_V_IDX+1]; /*parent,child,sibling,friend,next box,
+ 						*  SYNCTEX_TAG,SYNCTEX_LINE,SYNCTEX_COLUMN,
+@@ -514,7 +514,7 @@ DEFINE_synctex_new_NODE(hbox)
+  *  It does not contain a child field.
+  */
+ typedef struct {
+-    SYNCTEX_DECLARE_CHARINDEX;
++    SYNCTEX_DECLARE_CHARINDEX
+ 	synctex_class_t class;
+ 	synctex_info_t implementation[3+SYNCTEX_DEPTH_IDX+1]; /*  parent,sibling,friend,
+ 	                  *  SYNCTEX_TAG,SYNCTEX_LINE,SYNCTEX_COLUMN,
+@@ -569,7 +569,7 @@ DEFINE_synctex_new_NODE(void_hbox)
+ /*  The medium nodes correspond to kern, glue, penalty and math nodes.
+  *  In LuaTeX, the size of the nodes may have changed.  */
+ typedef struct {
+-    SYNCTEX_DECLARE_CHARINDEX;
++    SYNCTEX_DECLARE_CHARINDEX
+ 	synctex_class_t class;
+ 	synctex_info_t implementation[3+SYNCTEX_WIDTH_IDX+1]; /*  parent,sibling,friend,
+ 	                  *  SYNCTEX_TAG,SYNCTEX_LINE,SYNCTEX_COLUMN,
+@@ -634,7 +634,7 @@ DEFINE_synctex_new_NODE(kern)
+ 
+ /*  The small nodes correspond to glue and boundary nodes.  */
+ typedef struct {
+-    SYNCTEX_DECLARE_CHARINDEX;
++    SYNCTEX_DECLARE_CHARINDEX
+ 	synctex_class_t class;
+ 	synctex_info_t implementation[3+SYNCTEX_VERT_IDX+1]; /*  parent,sibling,friend,
+ 	                  *  SYNCTEX_TAG,SYNCTEX_LINE,SYNCTEX_COLUMN,
+@@ -692,7 +692,7 @@ DEFINE_synctex_new_NODE(boundary)
+ /*  Input nodes only know about their sibling, which is another input node.
+  *  The synctex information is the SYNCTEX_TAG and SYNCTEX_NAME*/
+ typedef struct {
+-    SYNCTEX_DECLARE_CHARINDEX;
++    SYNCTEX_DECLARE_CHARINDEX
+ 	synctex_class_t class;
+ 	synctex_info_t implementation[1+SYNCTEX_NAME_IDX+1]; /*  sibling,
+ 	                          *  SYNCTEX_TAG,SYNCTEX_NAME */
+@@ -3544,7 +3544,7 @@ int synctex_display_query(synctex_scanner_t scanner,const char * name,int line,i
+                     parent = SYNCTEX_PARENT(node);
+                     next_match = abs(SYNCTEX_LINE(node)-SYNCTEX_MEAN_LINE(parent));
+                     if (next_match < best_match
+-                            || (next_match == best_match && SYNCTEX_NODE_WEIGHT(parent)>best_weight)) {
++                            || (next_match == best_match && SYNCTEX_NODE_WEIGHT(parent)>(int)best_weight)) {
+                         best_match = next_match;
+                         best_ref = start_ref;
+                         best_weight = SYNCTEX_NODE_WEIGHT(parent);
+diff --git a/src/cpp/core/zlib/gzguts.h b/src/cpp/core/zlib/gzguts.h
+index 3107c36..f8dd9ad 100644
+--- a/src/cpp/core/zlib/gzguts.h
++++ b/src/cpp/core/zlib/gzguts.h
+@@ -27,7 +27,7 @@
+ #endif
+ #include <fcntl.h>
+ 
+-#ifdef __TURBOC__
++#if defined(__TURBOC__) || defined(_MSC_VER)
+ #  include <io.h>
+ #endif
+ 
+@@ -66,7 +66,6 @@
+ /* In Win32, vsnprintf is available as the "non-ANSI" _vsnprintf. */
+ #    if !defined(vsnprintf) && !defined(NO_vsnprintf)
+ #      if !defined(_MSC_VER) || ( defined(_MSC_VER) && _MSC_VER < 1500 )
+-#         include <io.h>
+ #         define vsnprintf _vsnprintf
+ #      endif
+ #    endif
+diff --git a/src/cpp/core/zlib/zconf.h b/src/cpp/core/zlib/zconf.h
+index 4fdf9d9..759a61d 100644
+--- a/src/cpp/core/zlib/zconf.h
++++ b/src/cpp/core/zlib/zconf.h
+@@ -8,7 +8,7 @@
+ #ifndef ZCONF_H
+ #define ZCONF_H
+ /* #undef Z_PREFIX */
+-#define Z_HAVE_UNISTD_H
++/* #undef Z_HAVE_UNISTD_H */
+ 
+ /*
+  * If you *really* need a unique prefix for all types and library functions,
+diff --git a/src/cpp/desktop/CMakeLists.txt b/src/cpp/desktop/CMakeLists.txt
+index bf451f5..07ee4a9 100644
+--- a/src/cpp/desktop/CMakeLists.txt
++++ b/src/cpp/desktop/CMakeLists.txt
+@@ -248,7 +248,10 @@ if(WIN32)
+    configure_file (${CMAKE_CURRENT_SOURCE_DIR}/rstudio.exe.manifest
+                    ${CMAKE_CURRENT_BINARY_DIR}/rstudio.exe.manifest COPYONLY)
+ 
+-   if(MINGW)
++   if(MSVC)
++      set(LINK_FLAGS -SUBSYSTEM:WINDOWS version)
++      set(DESKTOP_SOURCE_FILES ${DESKTOP_SOURCE_FILES} "${CMAKE_CURRENT_BINARY_DIR}/rstudio.rc")
++   elseif(MINGW)
+       set(LINK_FLAGS -Wl,-subsystem,windows -lversion)
+       add_custom_command(
+          OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/res.o"
+@@ -265,7 +268,7 @@ if(WIN32)
+       set(DESKTOP_SOURCE_FILES
+          ${DESKTOP_SOURCE_FILES}
+          "${CMAKE_CURRENT_BINARY_DIR}/res.o")
+-   endif(MINGW)
++   endif(MSVC)
+ 
+    if(NOT RSTUDIO_SESSION_WIN64)
+       add_subdirectory(urlopener)
+@@ -283,7 +286,8 @@ endif(WIN32)
+ # bundle it unless we are building on linux and NOT linking against the
+ # qtsdk -- in that case we are linking against system versions of the
+ # qt libraries which should therefore not be bundled
+-if(APPLE OR WIN32 OR
++if(APPLE OR
++   (WIN32 AND NOT DEFINED ENV{CONDA_BUILD}) OR
+    RSTUDIO_PACKAGE_BUILD OR
+    (${QT_LIBRARY_DIR} MATCHES ".*QtSDK.*"))
+   set(RSTUDIO_BUNDLE_QT TRUE)
+@@ -404,12 +408,12 @@ if(RSTUDIO_BUNDLE_QT)
+            DESTINATION ${QTCONF_DEST_DIR})
+ 
+    # copy qt plugins
++   # "${QT_IMAGEFORMATS_DIR}/qmng${LIB_SUFFIX}.dll" .. conda's Qt5 is missing this.
+    if(WIN32)
+       set(QT_IMAGEFORMATS_DIR "${Qt5Core_DIR}/../../../plugins/imageformats")
+       install(PROGRAMS "${QT_IMAGEFORMATS_DIR}/qgif${LIB_SUFFIX}.dll"
+                        "${QT_IMAGEFORMATS_DIR}/qico${LIB_SUFFIX}.dll"
+                        "${QT_IMAGEFORMATS_DIR}/qjpeg${LIB_SUFFIX}.dll"
+-                       "${QT_IMAGEFORMATS_DIR}/qmng${LIB_SUFFIX}.dll"
+                        "${QT_IMAGEFORMATS_DIR}/qsvg${LIB_SUFFIX}.dll"
+                        "${QT_IMAGEFORMATS_DIR}/qtga${LIB_SUFFIX}.dll"
+                        "${QT_IMAGEFORMATS_DIR}/qtiff${LIB_SUFFIX}.dll"
+@@ -522,9 +526,9 @@ if(RSTUDIO_BUNDLE_QT)
+                        ${QT_BINARY_DIR}/Qt5OpenGL${LIB_SUFFIX}.dll
+                        ${QT_BINARY_DIR}/Qt5Multimedia${LIB_SUFFIX}.dll
+                        ${QT_BINARY_DIR}/Qt5MultimediaWidgets${LIB_SUFFIX}.dll
+-                       ${QT_BINARY_DIR}/icudt53.dll
+-                       ${QT_BINARY_DIR}/icuin53.dll
+-                       ${QT_BINARY_DIR}/icuuc53.dll
++                       ${QT_BINARY_DIR}/icudt57.dll
++                       ${QT_BINARY_DIR}/icuin57.dll
++                       ${QT_BINARY_DIR}/icuuc57.dll
+                        ${QT_BINARY_DIR}/libwinpthread-1.dll
+                        ${QT_BINARY_DIR}/libstdc++-6.dll
+                        ${QT_BINARY_DIR}/libgcc_s_dw2-1.dll
+diff --git a/src/cpp/desktop/DesktopMain.cpp b/src/cpp/desktop/DesktopMain.cpp
+index 69dab92..8777d0c 100644
+--- a/src/cpp/desktop/DesktopMain.cpp
++++ b/src/cpp/desktop/DesktopMain.cpp
+@@ -42,6 +42,10 @@
+ #include "DesktopSessionLauncher.hpp"
+ #include "DesktopProgressActivator.hpp"
+ 
++#if defined(_MSC_VER)
++#include <TCHAR.h>
++#endif
++
+ QProcess* pRSessionProcess;
+ QString sharedSecret;
+ 
+@@ -195,8 +199,15 @@ bool isNonProjectFilename(QString filename)
+ 
+ } // anonymous namespace
+ 
++#ifdef _MSC_VER
++int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
++{
++    int argc = __argc;
++    char **argv = __argv;
++#else
+ int main(int argc, char* argv[])
+ {
++#endif
+    core::system::initHook();
+ 
+    try
+@@ -309,7 +320,7 @@ int main(int argc, char* argv[])
+          confPath = currentPath.complete("conf/rdesktop-dev.conf");
+          sessionPath = currentPath.complete("session/rsession");
+          scriptsPath = currentPath.complete("desktop");
+-#ifdef _WIN32
++#if defined(_WIN32) && defined(NOT_WANTED_FOR_CONDA)
+          if (version.architecture() == ArchX64)
+             sessionPath = installPath.complete("session/x64/rsession");
+ #endif
+@@ -324,7 +335,7 @@ int main(int argc, char* argv[])
+          scriptsPath = installPath.complete("bin");
+ 
+          // check for win64 binary on windows
+-#ifdef _WIN32
++#if defined(_WIN32) && defined(NOT_WANTED_FOR_CONDA)
+          if (version.architecture() == ArchX64)
+             sessionPath = installPath.complete("bin/x64/rsession");
+ #endif
+diff --git a/src/cpp/desktop/DesktopRVersion.cpp b/src/cpp/desktop/DesktopRVersion.cpp
+index fb108a3..427d679 100644
+--- a/src/cpp/desktop/DesktopRVersion.cpp
++++ b/src/cpp/desktop/DesktopRVersion.cpp
+@@ -556,7 +556,8 @@ int RVersion::compareTo(const RVersion& other) const
+    int c;
+ 
+    // First order by version, descending
+-   c = -(version() - other.version());
++   // Fix 'unary minus operator applied to unsigned type, result still unsigned'
++   c = -(static_cast<int>(version()) - static_cast<int>(other.version()));
+    if (c != 0)
+       return c;
+ 
+diff --git a/src/cpp/desktop/DesktopWordViewer.hpp b/src/cpp/desktop/DesktopWordViewer.hpp
+index 54e731a..acfcdfd 100644
+--- a/src/cpp/desktop/DesktopWordViewer.hpp
++++ b/src/cpp/desktop/DesktopWordViewer.hpp
+@@ -20,7 +20,8 @@
+ #include <boost/utility.hpp>
+ #include <core/Error.hpp>
+ 
+-class IDispatch;
++// type name first seen using 'class' now seen using 'struct'
++struct IDispatch;
+ 
+ namespace rstudio {
+ namespace desktop {
+diff --git a/src/cpp/desktop/rstudio.rc.in b/src/cpp/desktop/rstudio.rc.in
+index 3efb7bb..1bafd7f 100644
+--- a/src/cpp/desktop/rstudio.rc.in
++++ b/src/cpp/desktop/rstudio.rc.in
+@@ -3,7 +3,6 @@
+ 1 ICON RStudio.ico
+ 2 ICON RProject.ico
+ 
+-1 RT_MANIFEST "rstudio.exe.manifest"
+ 1 VERSIONINFO
+ FILEVERSION ${CPACK_PACKAGE_VERSION_MAJOR},${CPACK_PACKAGE_VERSION_MINOR},${CPACK_PACKAGE_VERSION_PATCH},0
+ PRODUCTVERSION ${CPACK_PACKAGE_VERSION_MAJOR},${CPACK_PACKAGE_VERSION_MINOR},${CPACK_PACKAGE_VERSION_PATCH},0
+diff --git a/src/cpp/desktop/synctex/rsinverse/CMakeLists.txt b/src/cpp/desktop/synctex/rsinverse/CMakeLists.txt
+index 484a0ca..9ed8268 100644
+--- a/src/cpp/desktop/synctex/rsinverse/CMakeLists.txt
++++ b/src/cpp/desktop/synctex/rsinverse/CMakeLists.txt
+@@ -36,22 +36,27 @@ configure_file (${CMAKE_CURRENT_SOURCE_DIR}/rsinverse.rc.in
+ configure_file (${CMAKE_CURRENT_SOURCE_DIR}/rsinverse.exe.manifest
+                 ${CMAKE_CURRENT_BINARY_DIR}/rsinverse.exe.manifest COPYONLY)
+ 
+-set(LINK_FLAGS -Wl,-subsystem,windows -lversion)
+-add_custom_command(
+-   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/res.o"
+-   COMMAND windres.exe
+-      -I "."
+-      -i "rsinverse.rc"
+-      -o "${CMAKE_CURRENT_BINARY_DIR}/res.o"
+-      -Ocoff
+-   DEPENDS
+-      "${CMAKE_CURRENT_BINARY_DIR}/rsinverse.rc"
+-      "${CMAKE_CURRENT_SOURCE_DIR}/rsinverse.exe.manifest")
+-set(RSINVERSE_SOURCE_FILES
+-   ${RSINVERSE_SOURCE_FILES}
+-   "${CMAKE_CURRENT_BINARY_DIR}/res.o")
++if(MSVC)
++  set(LINK_FLAGS -SUBSYSTEM:WINDOWS version)
++  set(RSINVERSE_SOURCE_FILES ${RSINVERSE_SOURCE_FILES} ${CMAKE_CURRENT_BINARY_DIR}/rsinverse.rc)
++elseif(MINGW)
++  set(LINK_FLAGS -Wl,-subsystem,windows -lversion)
++  add_custom_command(
++     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/res.o"
++     COMMAND windres.exe
++        -I "."
++        -i "rsinverse.rc"
++        -o "${CMAKE_CURRENT_BINARY_DIR}/res.o"
++        -Ocoff
++     DEPENDS
++        "${CMAKE_CURRENT_BINARY_DIR}/rsinverse.rc"
++        "${CMAKE_CURRENT_SOURCE_DIR}/rsinverse.exe.manifest")
++  set(RSINVERSE_SOURCE_FILES
++     ${RSINVERSE_SOURCE_FILES}
++     "${CMAKE_CURRENT_BINARY_DIR}/res.o")
+ 
+-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -mwindows")
++  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -mwindows")
++endif(MSVC)
+ 
+ add_executable(rsinverse
+   ${RSINVERSE_SOURCE_FILES}
+diff --git a/src/cpp/desktop/synctex/rsinverse/rsinverse.rc.in b/src/cpp/desktop/synctex/rsinverse/rsinverse.rc.in
+index ec4916b..1519417 100644
+--- a/src/cpp/desktop/synctex/rsinverse/rsinverse.rc.in
++++ b/src/cpp/desktop/synctex/rsinverse/rsinverse.rc.in
+@@ -1,6 +1,5 @@
+ #include "winuser.h"
+ 
+-1 RT_MANIFEST "rsinverse.exe.manifest"
+ 1 VERSIONINFO
+ FILEVERSION ${CPACK_PACKAGE_VERSION_MAJOR},${CPACK_PACKAGE_VERSION_MINOR},${CPACK_PACKAGE_VERSION_PATCH},0
+ PRODUCTVERSION ${CPACK_PACKAGE_VERSION_MAJOR},${CPACK_PACKAGE_VERSION_MINOR},${CPACK_PACKAGE_VERSION_PATCH},0
+diff --git a/src/cpp/desktop/urlopener/CMakeLists.txt b/src/cpp/desktop/urlopener/CMakeLists.txt
+index 9b2ebcc..c24b4da 100644
+--- a/src/cpp/desktop/urlopener/CMakeLists.txt
++++ b/src/cpp/desktop/urlopener/CMakeLists.txt
+@@ -36,20 +36,25 @@ configure_file (${CMAKE_CURRENT_SOURCE_DIR}/urlopener.rc.in
+ configure_file (${CMAKE_CURRENT_SOURCE_DIR}/urlopener.exe.manifest
+                 ${CMAKE_CURRENT_BINARY_DIR}/urlopener.exe.manifest COPYONLY)
+ 
+-set(LINK_FLAGS -Wl,-subsystem,windows -lversion)
+-add_custom_command(
+-   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/res.o"
+-   COMMAND windres.exe
+-      -I "."
+-      -i "urlopener.rc"
+-      -o "${CMAKE_CURRENT_BINARY_DIR}/res.o"
+-      -Ocoff
+-   DEPENDS
+-      "${CMAKE_CURRENT_BINARY_DIR}/urlopener.rc"
+-      "${CMAKE_CURRENT_SOURCE_DIR}/urlopener.exe.manifest")
+-set(URLOPENER_SOURCE_FILES
+-   ${URLOPENER_SOURCE_FILES}
+-   "${CMAKE_CURRENT_BINARY_DIR}/res.o")
++if(MSVC)
++  set(LINK_FLAGS -SUBSYSTEM:WINDOWS version)
++  set(URLOPENER_SOURCE_FILES ${URLOPENER_SOURCE_FILES} ${CMAKE_CURRENT_BINARY_DIR}/urlopener.rc)
++elseif(MINGW)
++  set(LINK_FLAGS -Wl,-subsystem,windows -lversion)
++  add_custom_command(
++     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/res.o"
++     COMMAND windres.exe
++        -I "."
++        -i "urlopener.rc"
++        -o "${CMAKE_CURRENT_BINARY_DIR}/res.o"
++        -Ocoff
++     DEPENDS
++        "${CMAKE_CURRENT_BINARY_DIR}/urlopener.rc"
++        "${CMAKE_CURRENT_SOURCE_DIR}/urlopener.exe.manifest")
++  set(URLOPENER_SOURCE_FILES
++     ${URLOPENER_SOURCE_FILES}
++     "${CMAKE_CURRENT_BINARY_DIR}/res.o")
++endif(MSVC)
+ 
+ add_executable(urlopener
+   ${URLOPENER_SOURCE_FILES}
+diff --git a/src/cpp/desktop/urlopener/urlopener.rc.in b/src/cpp/desktop/urlopener/urlopener.rc.in
+index 4042d13..e1d5506 100644
+--- a/src/cpp/desktop/urlopener/urlopener.rc.in
++++ b/src/cpp/desktop/urlopener/urlopener.rc.in
+@@ -1,6 +1,5 @@
+ #include "winuser.h"
+ 
+-1 RT_MANIFEST "urlopener.exe.manifest"
+ 1 VERSIONINFO
+ FILEVERSION ${CPACK_PACKAGE_VERSION_MAJOR},${CPACK_PACKAGE_VERSION_MINOR},${CPACK_PACKAGE_VERSION_PATCH},0
+ PRODUCTVERSION ${CPACK_PACKAGE_VERSION_MAJOR},${CPACK_PACKAGE_VERSION_MINOR},${CPACK_PACKAGE_VERSION_PATCH},0
+diff --git a/src/cpp/diagnostics/CMakeLists.txt b/src/cpp/diagnostics/CMakeLists.txt
+index c6b71d8..c96cde9 100644
+--- a/src/cpp/diagnostics/CMakeLists.txt
++++ b/src/cpp/diagnostics/CMakeLists.txt
+@@ -41,19 +41,23 @@ if(WIN32)
+    configure_file (${CMAKE_CURRENT_SOURCE_DIR}/diagnostics.exe.manifest
+                    ${CMAKE_CURRENT_BINARY_DIR}/diagnostics.exe.manifest COPYONLY)
+ 
+-   add_custom_command(
+-      OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/res.o"
+-      COMMAND windres.exe
+-         -I "."
+-         -i "diagnostics.rc"
+-         -o "${CMAKE_CURRENT_BINARY_DIR}/res.o"
+-         -Ocoff
+-      DEPENDS
+-         "${CMAKE_CURRENT_BINARY_DIR}/diagnostics.rc"
+-         "${CMAKE_CURRENT_SOURCE_DIR}/diagnostics.exe.manifest")
+-   set(DIAGNOSTICS_SOURCE_FILES
+-      ${DIAGNOSTICS_SOURCE_FILES}
+-      "${CMAKE_CURRENT_BINARY_DIR}/res.o")
++   if(MSVC)
++      set(DIAGNOSTICS_SOURCE_FILES ${DIAGNOSTICS_SOURCE_FILES} ${CMAKE_CURRENT_BINARY_DIR}/diagnostics.rc)
++   elseif(MINGW)
++      add_custom_command(
++         OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/res.o"
++         COMMAND windres.exe
++            -I "."
++            -i "diagnostics.rc"
++            -o "${CMAKE_CURRENT_BINARY_DIR}/res.o"
++            -Ocoff
++         DEPENDS
++            "${CMAKE_CURRENT_BINARY_DIR}/diagnostics.rc"
++            "${CMAKE_CURRENT_SOURCE_DIR}/diagnostics.exe.manifest")
++      set(DIAGNOSTICS_SOURCE_FILES
++         ${DIAGNOSTICS_SOURCE_FILES}
++         "${CMAKE_CURRENT_BINARY_DIR}/res.o")
++   endif(MSVC)
+ endif()
+ 
+ add_executable(diagnostics
+diff --git a/src/cpp/diagnostics/diagnostics.rc.in b/src/cpp/diagnostics/diagnostics.rc.in
+index 5f9b6f1..681f4d3 100644
+--- a/src/cpp/diagnostics/diagnostics.rc.in
++++ b/src/cpp/diagnostics/diagnostics.rc.in
+@@ -1,6 +1,5 @@
+ #include "winuser.h"
+ 
+-1 RT_MANIFEST "diagnostics.exe.manifest"
+ 1 VERSIONINFO
+ FILEVERSION ${CPACK_PACKAGE_VERSION_MAJOR},${CPACK_PACKAGE_VERSION_MINOR},${CPACK_PACKAGE_VERSION_PATCH},0
+ PRODUCTVERSION ${CPACK_PACKAGE_VERSION_MAJOR},${CPACK_PACKAGE_VERSION_MINOR},${CPACK_PACKAGE_VERSION_PATCH},0
+diff --git a/src/cpp/r/session/graphics/RGraphicsDevDesc.hpp b/src/cpp/r/session/graphics/RGraphicsDevDesc.hpp
+index f978da5..f38d690 100644
+--- a/src/cpp/r/session/graphics/RGraphicsDevDesc.hpp
++++ b/src/cpp/r/session/graphics/RGraphicsDevDesc.hpp
+@@ -16,6 +16,13 @@
+ #ifndef R_SESSION_GRAPHICS_DEV_DESC_HPP
+ #define R_SESSION_GRAPHICS_DEV_DESC_HPP
+ 
++#ifdef _MSC_VER
++/* Prevent 'warning C4068: unknown pragma' which happens as a result of
++   including R headers before Window's <cstdlib> and <cstring> */
++#include <cstdlib>
++#include <cstring>
++#endif
++
+ #include <Rinternals.h>
+ 
+ #include <R_ext/Boolean.h>
+diff --git a/src/cpp/session/CMakeLists.txt b/src/cpp/session/CMakeLists.txt
+index 2311588..9dff41a 100644
+--- a/src/cpp/session/CMakeLists.txt
++++ b/src/cpp/session/CMakeLists.txt
+@@ -311,19 +311,23 @@ if(WIN32)
+    configure_file (${CMAKE_CURRENT_SOURCE_DIR}/rsession.exe.manifest
+                    ${CMAKE_CURRENT_BINARY_DIR}/rsession.exe.manifest COPYONLY)
+ 
+-   add_custom_command(
+-      OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/res.o"
+-      COMMAND windres.exe
+-         -I "."
+-         -i "rsession.rc"
+-         -o "${CMAKE_CURRENT_BINARY_DIR}/res.o"
+-         -Ocoff
+-      DEPENDS
+-         "${CMAKE_CURRENT_BINARY_DIR}/rsession.rc"
+-         "${CMAKE_CURRENT_SOURCE_DIR}/rsession.exe.manifest")
+-   set(SESSION_SOURCE_FILES
+-      ${SESSION_SOURCE_FILES}
+-      "${CMAKE_CURRENT_BINARY_DIR}/res.o")
++   if(MSVC)
++      set(SESSION_SOURCE_FILES ${SESSION_SOURCE_FILES} ${CMAKE_CURRENT_BINARY_DIR}/rsession.rc)
++   elseif(MINGW)
++      add_custom_command(
++         OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/res.o"
++         COMMAND windres.exe
++            -I "."
++            -i "rsession.rc"
++            -o "${CMAKE_CURRENT_BINARY_DIR}/res.o"
++            -Ocoff
++         DEPENDS
++            "${CMAKE_CURRENT_BINARY_DIR}/rsession.rc"
++            "${CMAKE_CURRENT_SOURCE_DIR}/rsession.exe.manifest")
++      set(SESSION_SOURCE_FILES
++         ${SESSION_SOURCE_FILES}
++         "${CMAKE_CURRENT_BINARY_DIR}/res.o")
++   endif(MSVC)
+    if(NOT RSTUDIO_SESSION_WIN64)
+       add_subdirectory(consoleio)
+    endif()
+@@ -347,7 +351,7 @@ endif()
+ # set link dependencies
+ if(WIN32)
+    set(RSTUDIO_CORE_ZLIB rstudio-core-zlib)
+-   set(SESSION_SYSTEM_LIBRARIES ${SESSION_SYSTEM_LIBRARIES} -ladvapi32)
++   set(SESSION_SYSTEM_LIBRARIES ${SESSION_SYSTEM_LIBRARIES} advapi32)
+ endif()
+ if(APPLE)
+    find_library(MAC_APPKIT_LIBRARY NAMES AppKit)
+@@ -496,7 +500,7 @@ if (NOT RSTUDIO_SESSION_WIN64)
+    endif()
+ 
+    # install gnudiff, mysys_ssh, and sumatra-pdf on windows
+-   if(WIN32)
++   if(WIN32 AND NOT DEFINED ENV{CONDA_BUILD})
+       install(DIRECTORY "${RSTUDIO_WINDOWS_DEPENDENCIES_DIR}/gnudiff"
+               USE_SOURCE_PERMISSIONS
+               DESTINATION  ${RSTUDIO_INSTALL_BIN})
+diff --git a/src/cpp/session/consoleio/CMakeLists.txt b/src/cpp/session/consoleio/CMakeLists.txt
+index 67aa6c6..4437f6c 100644
+--- a/src/cpp/session/consoleio/CMakeLists.txt
++++ b/src/cpp/session/consoleio/CMakeLists.txt
+@@ -36,19 +36,23 @@ configure_file (${CMAKE_CURRENT_SOURCE_DIR}/consoleio.rc.in
+ configure_file (${CMAKE_CURRENT_SOURCE_DIR}/consoleio.exe.manifest
+                 ${CMAKE_CURRENT_BINARY_DIR}/consoleio.exe.manifest COPYONLY)
+ 
+-add_custom_command(
+-   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/res.o"
+-   COMMAND windres.exe
+-      -I "."
+-      -i "consoleio.rc"
+-      -o "${CMAKE_CURRENT_BINARY_DIR}/res.o"
+-      -Ocoff
+-   DEPENDS
+-      "${CMAKE_CURRENT_BINARY_DIR}/consoleio.rc"
+-      "${CMAKE_CURRENT_SOURCE_DIR}/consoleio.exe.manifest")
+-set(CONSOLEIO_SOURCE_FILES
+-   ${CONSOLEIO_SOURCE_FILES}
+-   "${CMAKE_CURRENT_BINARY_DIR}/res.o")
++if(MSVC)
++   set(CONSOLEIO_SOURCE_FILES ${CONSOLEIO_SOURCE_FILES} ${CMAKE_CURRENT_BINARY_DIR}/consoleio.rc)
++elseif(MINGW)
++   add_custom_command(
++      OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/res.o"
++      COMMAND windres.exe
++         -I "."
++         -i "consoleio.rc"
++         -o "${CMAKE_CURRENT_BINARY_DIR}/res.o"
++         -Ocoff
++      DEPENDS
++         "${CMAKE_CURRENT_BINARY_DIR}/consoleio.rc"
++         "${CMAKE_CURRENT_SOURCE_DIR}/consoleio.exe.manifest")
++   set(CONSOLEIO_SOURCE_FILES
++      ${CONSOLEIO_SOURCE_FILES}
++      "${CMAKE_CURRENT_BINARY_DIR}/res.o")
++endif(MSVC)
+ 
+ add_executable(consoleio
+   ${CONSOLEIO_SOURCE_FILES}
+diff --git a/src/cpp/session/consoleio/consoleio.rc.in b/src/cpp/session/consoleio/consoleio.rc.in
+index 238056b..32a2ef7 100644
+--- a/src/cpp/session/consoleio/consoleio.rc.in
++++ b/src/cpp/session/consoleio/consoleio.rc.in
+@@ -1,6 +1,5 @@
+ #include "winuser.h"
+ 
+-1 RT_MANIFEST "consoleio.exe.manifest"
+ 1 VERSIONINFO
+ FILEVERSION ${CPACK_PACKAGE_VERSION_MAJOR},${CPACK_PACKAGE_VERSION_MINOR},${CPACK_PACKAGE_VERSION_PATCH},0
+ PRODUCTVERSION ${CPACK_PACKAGE_VERSION_MAJOR},${CPACK_PACKAGE_VERSION_MINOR},${CPACK_PACKAGE_VERSION_PATCH},0
+diff --git a/src/cpp/session/http/SessionHttpConnectionListenerImpl.hpp b/src/cpp/session/http/SessionHttpConnectionListenerImpl.hpp
+index 248081b..75c3b1d 100644
+--- a/src/cpp/session/http/SessionHttpConnectionListenerImpl.hpp
++++ b/src/cpp/session/http/SessionHttpConnectionListenerImpl.hpp
+@@ -24,8 +24,8 @@
+ #include <boost/asio/placeholders.hpp>
+ #include <boost/algorithm/string/predicate.hpp>
+ 
+-#include <core/Macros.hpp>
+ #include <core/BoostThread.hpp>
++#include <core/Macros.hpp>
+ #include <core/FilePath.hpp>
+ #include <core/FileLock.hpp>
+ #include <core/Error.hpp>
+diff --git a/src/cpp/session/modules/SessionSource.cpp b/src/cpp/session/modules/SessionSource.cpp
+index d9aaeb7..3544f9e 100644
+--- a/src/cpp/session/modules/SessionSource.cpp
++++ b/src/cpp/session/modules/SessionSource.cpp
+@@ -934,9 +934,9 @@ Error getScriptRunCommand(const json::JsonRpcRequest& request,
+    if (filePath.isWithin(currentPath))
+    {
+       path = filePath.relativePath(currentPath);
++#ifndef _WINDOWS
+       if (interpreter.empty())
+       {
+-#ifndef _WINDOWS
+          if (path.find_first_of('/') == std::string::npos)
+             path = "./" + path;
+       }
+diff --git a/src/cpp/session/rsession.rc.in b/src/cpp/session/rsession.rc.in
+index 664196e..b5a4034 100644
+--- a/src/cpp/session/rsession.rc.in
++++ b/src/cpp/session/rsession.rc.in
+@@ -1,6 +1,5 @@
+ #include "winuser.h"
+ 
+-1 RT_MANIFEST "rsession.exe.manifest"
+ 1 VERSIONINFO
+ FILEVERSION ${CPACK_PACKAGE_VERSION_MAJOR},${CPACK_PACKAGE_VERSION_MINOR},${CPACK_PACKAGE_VERSION_PATCH},0
+ PRODUCTVERSION ${CPACK_PACKAGE_VERSION_MAJOR},${CPACK_PACKAGE_VERSION_MINOR},${CPACK_PACKAGE_VERSION_PATCH},0
+-- 
+2.9.1
+
