@@ -1,0 +1,35 @@
+From 89065398ee031d52b27751fbe91d29ba0e46039b Mon Sep 17 00:00:00 2001
+From: Ray Donnelly <mingw.android@gmail.com>
+Date: Tue, 16 Aug 2016 10:30:26 +0100
+Subject: [PATCH 7/7] Store pointers in intptr_t to fix 'cast loses precision'
+
+---
+ src/cpp/desktop/urlopener/UrlOpenerMain.cpp | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/cpp/desktop/urlopener/UrlOpenerMain.cpp b/src/cpp/desktop/urlopener/UrlOpenerMain.cpp
+index dd2a6cd..d12cd19 100644
+--- a/src/cpp/desktop/urlopener/UrlOpenerMain.cpp
++++ b/src/cpp/desktop/urlopener/UrlOpenerMain.cpp
+@@ -38,12 +38,12 @@ int main(int argc, char** argv)
+       }
+ 
+       // shell execute
+-      DWORD ret = (DWORD) ::ShellExecute(NULL,
+-                                         "open",
+-                                         argv[1],
+-                                         NULL,
+-                                         NULL,
+-                                         SW_SHOW);
++      intptr_t ret = (intptr_t) ::ShellExecute(NULL,
++                                               "open",
++                                               argv[1],
++                                               NULL,
++                                               NULL,
++                                               SW_SHOW);
+ 
+       // check for error
+       if(ret <= 32)
+-- 
+2.9.1
+
