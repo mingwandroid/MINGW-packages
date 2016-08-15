@@ -1,0 +1,136 @@
+# Maintainer: Ray Donnelly <mingw.android@gmail.com>
+
+#_variant=-static
+_realname=rstudio
+_gitname=${_realname}
+pkgname="${MINGW_PACKAGE_PREFIX}-${_realname}"
+pkgver=r17027.29d6943
+pkgrel=1
+pkgdesc="A powerful IDE for R (mingw-w64)"
+arch=('any')
+url="https://github.com/aarnt/octopi"
+license=('GPL2')
+makedepends=('git'
+             "${MINGW_PACKAGE_PREFIX}-qt5${_variant}"
+             "${MINGW_PACKAGE_PREFIX}-gcc"
+             "${MINGW_PACKAGE_PREFIX}-boost")
+_gitroot="https://github.com/rstudio/rstudio.git"
+_gitname="rstudio"
+#options=('debug' '!strip')
+source=("${_gitname}"::"git+${_gitroot}"
+        "0001-Fix-program_options-for-Boost-1.59.patch"
+        "0002-Win32-Add-LibExtern-to-RInterface.hpp-add-fix-extern.patch"
+        "0003-Win32-MSVC-and-conda-fixes.patch"
+        "0004-Debugging.patch"
+        "0005-Qt5Positioning-is-not-required.patch"
+        "0006-Qt5Sensors-is-not-required.patch"
+        "0007-Store-pointers-in-intptr_t-to-fix-cast-loses-precisi.patch")
+sha256sums=('SKIP'
+            '9b9f268592eee425804732db927575bf70b770bf65df123833a3bcc402252b3d'
+            '5a102254a2c39c3ffc7e99d36b92158c1afafdfbf212a4bed8a094b018cb569d'
+            '9b8dee2acb96b9d3c0e68e90ef640ab6d94f7ec2d848b4a13d31e5bf664d5c52'
+            '5de224dc0c88bc4b8c11d899e89f51d3b74faf52ea86cfa7f045734407fdf5dd'
+            '202a70731535e9a5dd68d097274f799479e69e072d83c34632547ac979e9158d'
+            '84fabdaeee5fc107d011040c5578be740463030b3a42f07fcdf5e8dbddfe9d07'
+            '94d87db1888d48bcc81d0e7daeb608f04a9e54541e3f551dc8111fe279df33ec')
+
+pkgver() {
+    cd "${srcdir}/${_gitname}"
+    printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  pushd "${srcdir}"/${_gitname}
+    gitam_mkpkg "${srcdir}"/0001-Fix-program_options-for-Boost-1.59.patch
+    gitam_mkpkg "${srcdir}"/0002-Win32-Add-LibExtern-to-RInterface.hpp-add-fix-extern.patch
+    gitam_mkpkg "${srcdir}"/0003-Win32-MSVC-and-conda-fixes.patch
+    gitam_mkpkg "${srcdir}"/0004-Debugging.patch
+    gitam_mkpkg "${srcdir}"/0005-Qt5Positioning-is-not-required.patch
+    gitam_mkpkg "${srcdir}"/0006-Qt5Sensors-is-not-required.patch
+    gitam_mkpkg "${srcdir}"/0007-Store-pointers-in-intptr_t-to-fix-cast-loses-precisi.patch
+  popd
+  [[ -d build-${CARCH}${_variant} ]] && rm -rf build-${CARCH}${_variant}
+  mkdir build-${CARCH}${_variant}
+
+  if [[ "${MSYSTEM}" == "MINGW32_NO_THANKS" ]]; then
+    export JAVA_HOME=${PWD}/openjdk-1.7.0-u80-unofficial-windows-i586-image
+    export JAVA_OPTS="-Xms1303m -Xmx1303m -XX:MaxPermSize=256m"
+    if [[ ! -d ${JAVA_HOME} ]]; then
+      wget -c http://bitbucket.org/alexkasko/openjdk-unofficial-builds/downloads/openjdk-1.7.0-u80-unofficial-windows-i586-image.zip
+      unzip -o openjdk-1.7.0-u80-unofficial-windows-i586-image.zip
+    fi
+  else
+    export JAVA_HOME=${PWD}/openjdk-1.7.0-u80-unofficial-windows-amd64-image
+    if [[ ! -d ${JAVA_HOME} ]]; then
+      wget -c http://bitbucket.org/alexkasko/openjdk-unofficial-builds/downloads/openjdk-1.7.0-u80-unofficial-windows-amd64-image.zip
+      unzip -o openjdk-1.7.0-u80-unofficial-windows-amd64-image.zip
+    fi
+  fi
+  if [[ ! -d ${PWD}/apache-ant-1.9.7 ]]; then
+    wget http://mirror.catn.com/pub/apache/ant/binaries/apache-ant-1.9.7-bin.zip
+    unzip -o apache-ant-1.9.7-bin.zip
+  fi
+  export "PATH=${PWD}/apache-ant-1.9.7/bin:${PATH}"
+  echo PATH 1 = $PATH
+}
+
+build() {
+  local -a extra_config
+  cd build-${CARCH}${_variant}
+  if [ "${_variant}" = "-static" ]; then
+    extra_config+=( -DBUILD_SHARED_LIBS=NO )
+    QT5_PREFIX=${MINGW_PREFIX}/qt5-static
+    export PATH=${QT5_PREFIX}/bin:"$PATH"
+  else
+    QT5_PREFIX=${MINGW_PREFIX}
+  fi
+  echo PATH 2 = $PATH
+  export CONDA_BUILD=1
+
+  pushd "${srcdir}"/${_gitname}/dependencies/windows
+    cmd.exe /C "install-dependencies.cmd"
+  popd
+  pushd "${srcdir}"/${_gitname}/dependencies/common
+    # Maybe need to not patch this part out of
+    # install-dependencies.cmd for MSYS2? or Conda?!?
+    [[ -d rmarkdown ]] || mkdir rmarkdown
+    [[ -d rsconnect ]] || mkdir rsconnect
+  popd
+
+  if [[ "${MSYSTEM}" == "MINGW32" ]]; then
+    CONDA_PREFIX=${HOME}/r_3_3_1-x86-3.5
+    CONDA_R_BIN=${CONDA_PREFIX}/R/bin/i386
+  else
+    CONDA_PREFIX=${HOME}/r_3_3_1-x64-3.5
+    CONDA_R_BIN=${CONDA_PREFIX}/R/bin/x64
+  fi
+
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+  BOOST_ROOT=${MINGW_PREFIX} \
+    cmake ../${_gitname} \
+      "${extra_config[@]}" \
+      -G'MSYS Makefiles' \
+      -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+      -DRSTUDIO_TARGET=Desktop \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DLIBR_HOME=${CONDA_PREFIX}/R \
+      -DLIBR_CORE_LIBRARY=${CONDA_R_BIN}/R.dll \
+      -DLIBR_GRAPHAPP_LIBRARY=${CONDA_R_BIN}/Rgraphapp.dll \
+      -DQT_QMAKE_EXECUTABLE=${QT5_PREFIX}/bin/qmake.exe \
+      -DCMAKE_MAKE_PROGRAM=make \
+      -DCMAKE_CXX_COMPILER=g++ \
+      -DCMAKE_C_COMPILER=gcc
+
+#  if [[ "${MSYSTEM}" == "MINGW32" ]]; then
+#    echo Early test for OpenJDK heap allocation problem
+#    pushd ../${_gitname}/src/gwt
+#      JAVA_OPTS="-Xms512m -Xmx1536m -XX:MaxPermSize=512m" ant -debug || true
+#    popd
+#  fi
+  make VERBOSE=1
+}
+
+package() {
+  cd build-${CARCH}${_variant}
+  make DESTDIR="${pkgdir}" install
+}
