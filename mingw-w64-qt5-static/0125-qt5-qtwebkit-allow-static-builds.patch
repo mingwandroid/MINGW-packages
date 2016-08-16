@@ -1,0 +1,15 @@
+--- x86_64/qtbase/configure.orig	2016-08-16 13:13:12.625467700 +0100
++++ x86_64/qtbase/configure	2016-08-16 13:32:33.729192500 +0100
+@@ -6674,9 +6674,10 @@
+ 
+ if [ "$CFG_SHARED" = "no" ]; then
+     echo
+-    echo "WARNING: Using static linking will disable the WebKit module."
++    echo "WARNING: Using static linking and WebKit was removed in commit 4221d6."
++    echo "         MSYS2 brings it back in an experimental form. See also:"
++    echo "         http://stackoverflow.com/a/16180670/3257826"
+     echo
+-    canBuildWebKit="no"
+ fi
+ 
+ CFG_CONCURRENT="yes"
