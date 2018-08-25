@@ -1,0 +1,71 @@
+# Maintainer: Ray Donnelly <mingw.android@gmail.com>
+
+_realname=cryptominisat
+pkgbase=mingw-w64-${_realname}
+pkgname=("${MINGW_PACKAGE_PREFIX}-${_realname}")
+pkgver=5.6.4
+pkgrel=1
+pkgdesc="An advanced SAT Solver (mingw-w64)"
+arch=('any')
+url='https://www.msoos.org/'
+license=('MIT License')
+makedepends=("${MINGW_PACKAGE_PREFIX}-cmake")
+options=('strip' 'staticlibs')
+source=("https://github.com/msoos/${_realname}/archive/${pkgver}.tar.gz"
+        "0001-Fix-libname-in-python-module.patch")
+sha256sums=('172ab480e8f6bfc4b92a94b607b7c4764e7ebd305a6d3df0cb687a27ac134c71'
+            'e74a00ac48b6b37297f211d7607c288e0781f68cd522475ac63a6aab1af2185e')
+
+# Helper macros to help make tasks easier #
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying $_patch"
+    patch -Nbp1 -i "${srcdir}/$_patch"
+  done
+}
+
+del_file_exists() {
+  for _fname in "$@"
+  do
+    if [ -f $_fname ]; then
+      rm -rf $_fname
+    fi
+  done
+}
+# =========================================== #
+
+prepare() {
+  cd ${srcdir}/${_realname}-${pkgver}
+  apply_patch_with_msg 0001-Fix-libname-in-python-module.patch
+}
+
+build() {
+  cd "${srcdir}"/${_realname}-${pkgver}
+  [[ -d "${srcdir}"/build-${CARCH} ]] && rm -rf "${srcdir}"/build-${CARCH}
+  mkdir -p "${srcdir}"/build-${CARCH} && cd "${srcdir}"/build-${CARCH}
+
+  declare -a extra_config
+  if check_option "debug" "n"; then
+    extra_config+=("-DCMAKE_BUILD_TYPE=Release")
+  else
+    extra_config+=("-DCMAKE_BUILD_TYPE=Debug")
+  fi
+
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+    ${MINGW_PREFIX}/bin/cmake \
+      -G'MSYS Makefiles' \
+      -DCMAKE_INSTALL_PREFIX=${MINGW_PREFIX} \
+      "${extra_config[@]}" \
+      -DBUILD_{SHARED,STATIC}_LIBS=ON \
+      ../${_realname}-${pkgver}
+
+  make
+}
+
+package() {
+  cd "${srcdir}"/build-${CARCH}
+  make install DESTDIR="${pkgdir}"
+
+  install -Dm644 ${srcdir}/${_realname}-${pkgver}/LICENSE.txt ${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/LICENSE.txt
+}
