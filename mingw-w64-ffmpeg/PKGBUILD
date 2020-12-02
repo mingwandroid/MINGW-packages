@@ -6,7 +6,7 @@ _realname=ffmpeg
 pkgbase="mingw-w64-${_realname}"
 pkgname="${MINGW_PACKAGE_PREFIX}-${_realname}"
 pkgver=4.3.1
-pkgrel=3
+pkgrel=4
 pkgdesc="Complete and free Internet live audio and video broadcasting solution (mingw-w64)"
 arch=('any')
 url="https://ffmpeg.org/"
@@ -43,10 +43,12 @@ depends=("${MINGW_PACKAGE_PREFIX}-aom"
          "${MINGW_PACKAGE_PREFIX}-x264"
          "${MINGW_PACKAGE_PREFIX}-x265"
          "${MINGW_PACKAGE_PREFIX}-xvidcore"
-         "${MINGW_PACKAGE_PREFIX}-zlib")
+         "${MINGW_PACKAGE_PREFIX}-zlib"
+         "${MINGW_PACKAGE_PREFIX}-frei0r-plugins")
 makedepends=("${MINGW_PACKAGE_PREFIX}-gcc"
              "${MINGW_PACKAGE_PREFIX}-pkg-config"
-             "${MINGW_PACKAGE_PREFIX}-nasm")
+             "${MINGW_PACKAGE_PREFIX}-nasm"
+             "${MINGW_PACKAGE_PREFIX}-dlfcn")
 source=(https://ffmpeg.org/releases/${_realname}-${pkgver}.tar.xz{,.asc}
         "0001-fix-srt.patch")
 validpgpkeys=('FCF986EA15E6E293A5644F10B4322F04D67658D8')
@@ -70,6 +72,7 @@ build() {
     --enable-dxva2
     --enable-d3d11va
     --enable-fontconfig
+    --enable-frei0r
     --enable-gnutls
     --enable-gpl
     --enable-libaom
@@ -146,10 +149,17 @@ build() {
 }
 
 check() {
-  cd "${srcdir}/build-${MINGW_CHOST}"
-  # workaround for conflict with SDL main(), use it if you have SDL installed
-  #make check CC_C="-c -Umain"
-  make check || true
+  pushd "${srcdir}/build-${MINGW_CHOST}-shared"
+    # workaround for conflict with SDL main(), use it if you have SDL installed
+    #make check CC_C="-c -Umain"
+    make check || true
+  popd
+
+  pushd "${srcdir}/build-${MINGW_CHOST}-static"
+    # workaround for conflict with SDL main(), use it if you have SDL installed
+    #make check CC_C="-c -Umain"
+    make check || true
+  popd
 }
 
 package() {
