@@ -1,0 +1,63 @@
+# Maintainer: Ray Donnelly <mingwandroid@gmail.com>
+
+_realname=libinsane
+pkgbase=mingw-w64-${_realname}
+pkgname="${MINGW_PACKAGE_PREFIX}-${_realname}"
+pkgver=1.0.8
+pkgrel=1
+pkgdesc="Library to access scanners"
+arch=('any')
+url="https://gitlab.gnome.org/World/OpenPaperwork/libinsane"
+license=(LGPL3)
+depends=("${MINGW_PACKAGE_PREFIX}-python-gobject"
+        "${MINGW_PACKAGE_PREFIX}-vala")
+makedepends=("${MINGW_PACKAGE_PREFIX}-ninja"
+             "${MINGW_PACKAGE_PREFIX}-doxygen"
+             "${MINGW_PACKAGE_PREFIX}-gcc"
+             "${MINGW_PACKAGE_PREFIX}-gobject-introspection"
+             "${MINGW_PACKAGE_PREFIX}-meson"
+             "git")
+checkdepends=("${MINGW_PACKAGE_PREFIX}-cunit")
+_commit=88e813c866c72facdf51fc62f4b7835b1e3d727b  # tags/1.0.8^0
+source=("git+https://gitlab.gnome.org/World/OpenPaperwork/${_realname}.git#commit=$_commit")
+md5sums=('SKIP')
+
+# =========================================== #
+#   Helper macros to help make tasks easier   #
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying ${_patch}"
+    patch -Nbp1 -i "${srcdir}/${_patch}"
+  done
+}
+
+del_file_exists() {
+  for _fname in "$@"
+  do
+    if [ -f ${_fname} ]; then
+      rm -rf ${_fname}
+    fi
+  done
+}
+# =========================================== #
+
+prepare() {
+  cd "${srcdir}/${_realname}"
+}
+
+build() {
+  MSYS2_ARG_CONV_EXCL="--prefix=" \
+    ${MINGW_PREFIX}/bin/meson \
+      --prefix=${MINGW_PREFIX} \
+      ${_realname} 
+  ninja
+}
+
+check() {
+  meson test --print-errorlogs ${_realname}
+}
+
+package() {
+  DESTDIR="${pkgdir}" ninja install ${_realname}
+}

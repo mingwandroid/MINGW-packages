@@ -1,0 +1,72 @@
+# Maintainer: Ray Donnelly <mingwandroid@gmail.com>
+
+_realname=paperwork
+pkgbase=mingw-w64-${_realname}
+pkgname="${MINGW_PACKAGE_PREFIX}-${_realname}"
+pkgver=1.2.4
+pkgrel=1
+pkgdesc="Personal document manager"
+arch=('any')
+url="https://openpaper.work/"
+license=('AGPL')
+depends=("${MINGW_PACKAGE_PREFIX}-libinsane"
+         "${MINGW_PACKAGE_PREFIX}-gdk-pixbuf2"
+         "${MINGW_PACKAGE_PREFIX}-cairo"
+         "${MINGW_PACKAGE_PREFIX}-python-cairo"
+         "${MINGW_PACKAGE_PREFIX}-gtk3"
+         "${MINGW_PACKAGE_PREFIX}-python-pillow"
+         "${MINGW_PACKAGE_PREFIX}-ca-certificates"
+         "${MINGW_PACKAGE_PREFIX}-python-setuptools"
+         "${MINGW_PACKAGE_PREFIX}-python-pip"
+         "${MINGW_PACKAGE_PREFIX}-libnotify"
+         "${MINGW_PACKAGE_PREFIX}-poppler"
+         "${MINGW_PACKAGE_PREFIX}-python-psutil"
+         "${MINGW_PACKAGE_PREFIX}-gettext")
+makedepends=("${MINGW_PACKAGE_PREFIX}-cunit"
+             "${MINGW_PACKAGE_PREFIX}-doxygen"
+             "${MINGW_PACKAGE_PREFIX}-python-cx_Freeze"
+             "zip"
+             "unzip")
+source=("https://gitlab.gnome.org/World/OpenPaperwork/$_realname/-/archive/$pkgver/paperwork-$pkgver.tar.bz2")
+sha256sums=('1b1ff8f0f9bc23eed724e94e9a7c1d8f0244bfe33424bb4fe68e6460c088523a')
+
+# =========================================== #
+#   Helper macros to help make tasks easier   #
+apply_patch_with_msg() {
+  for _patch in "$@"
+  do
+    msg2 "Applying ${_patch}"
+    patch -Nbp1 -i "${srcdir}/${_patch}"
+  done
+}
+
+del_file_exists() {
+  for _fname in "$@"
+  do
+    if [ -f ${_fname} ]; then
+      rm -rf ${_fname}
+    fi
+  done
+}
+# =========================================== #
+
+prepare() {
+  cd "${srcdir}/${_realname}-${pkgver}"
+}
+
+build() {
+  # mkdir -p "${srcdir}/build-${MINGW_CHOST}"
+  # cd "${srcdir}/build-${MINGW_CHOST}"
+  plain "Start building..."
+  make
+}
+
+check() {
+  # cd "${srcdir}/build-${MINGW_CHOST}"
+  make check
+}
+
+package() {
+  # cd "${srcdir}/build-${MINGW_CHOST}"
+  make DESTDIR="${pkgdir}" install
+}
