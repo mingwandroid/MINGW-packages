@@ -4,13 +4,14 @@ _realname=dlfcn
 pkgbase=mingw-w64-${_realname}
 pkgname="${MINGW_PACKAGE_PREFIX}-${_realname}"
 pkgver=1.2.0
-pkgrel=1
+pkgrel=2
 pkgdesc="A wrapper for dlfcn to the Win32 API (mingw-w64)"
 arch=('any')
 url="https://github.com/dlfcn-win32/dlfcn-win32"
 license=('LGPL')
 depends=("${MINGW_PACKAGE_PREFIX}-gcc-libs")
-makedepends=("${MINGW_PACKAGE_PREFIX}-gcc")
+makedepends=("${MINGW_PACKAGE_PREFIX}-gcc"
+             "${MINGW_PACKAGE_PREFIX}-cmake")
 options=('strip' 'staticlibs')
 source=(${_realname}-${pkgver}.tar.gz::https://github.com/dlfcn-win32/dlfcn-win32/archive/v${pkgver}.tar.gz
         unify-makefile.patch)
@@ -19,13 +20,12 @@ sha256sums=('f18a412e84d8b701e61a78252411fe8c72587f52417c1ef21ca93604de1b9c55'
 
 prepare() {
   cd "${srcdir}/dlfcn-win32-${pkgver}"
-#  patch -p1 -i "${srcdir}"/unify-makefile.patch
 }
 
 build() {
-  [[ -d "${srcdir}/build-${MINGW_CHOST}" ]] && rm -rf "${srcdir}/build-${MINGW_CHOST}"
-  cp -rf "$srcdir/dlfcn-win32-${pkgver}" "${srcdir}/build-${MINGW_CHOST}"
-  cd "${srcdir}/build-${MINGW_CHOST}"
+  [[ -d "${srcdir}/build-${MINGW_CHOST}.configure" ]] && rm -rf "${srcdir}/build-${MINGW_CHOST}.configure"
+  cp -rf "$srcdir/dlfcn-win32-${pkgver}" "${srcdir}/build-${MINGW_CHOST}.configure"
+  cd "${srcdir}/build-${MINGW_CHOST}.configure"
   ./configure \
     --prefix=${MINGW_PREFIX} \
     --libdir=${MINGW_PREFIX}/lib \
@@ -33,11 +33,24 @@ build() {
     --disable-stripping \
     --enable-shared \
     --disable-msvc
+  make
 
+  [[ -d "${srcdir}/build-${MINGW_CHOST}.cmake" ]] && rm -rf "${srcdir}/build-${MINGW_CHOST}.cmake"
+  cp -rf "$srcdir/dlfcn-win32-${pkgver}" "${srcdir}/build-${MINGW_CHOST}.cmake"
+  cd "${srcdir}/build-${MINGW_CHOST}.cmake"
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" \
+    ${MINGW_PREFIX}/bin/cmake \
+      -G "MSYS Makefiles" \
+      -DCMAKE_INSTALL_PREFIX="${MINGW_PREFIX}"  \
+      .
   make
 }
 
 package() {
-  cd "${srcdir}/build-${MINGW_CHOST}"
+  # First install the CMake build to get the CMake files.
+  cd "${srcdir}/build-${MINGW_CHOST}.cmake"
+  make DESTDIR="${pkgdir}" install
+  # Then play it safe (?) by using the actual libs and headers from the normal build.
+  cd "${srcdir}/build-${MINGW_CHOST}.configure"
   make DESTDIR="${pkgdir}" install
 }
