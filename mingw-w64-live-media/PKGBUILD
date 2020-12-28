@@ -5,38 +5,91 @@
 
 _realname=live-media
 pkgbase=mingw-w64-${_realname}
-pkgname=("${MINGW_PACKAGE_PREFIX}-${_realname}")
-pkgver=2019.11.06
+pkgname=("${MINGW_PACKAGE_PREFIX}-${_realname}"-vlc)
+pkgver=2016.11.28
 pkgrel=1
 pkgdesc="A set of C++ libraries for multimedia streaming (mingw-w64)"
 arch=('any')
 license=('LGPL')
 url="http://live555.com/liveMedia"
 depends=("${MINGW_PACKAGE_PREFIX}-gcc")
+conflicts=("${MINGW_PACKAGE_PREFIX}-live-media")
 options=('staticlibs')
-source=("https://download.videolan.org/contrib/live555/live.${pkgver}.tar.gz")
-sha256sums=('a512071d1c6dd2caf16ecec0aa2c24f0b1cc4fe789e96adc927ee1fe29be493a')
+source=("https://download.videolan.org/contrib/live555/live.${pkgver}.tar.gz"
+        0001-live555-nosignal.patch
+        0002-winstore.patch
+        0003-no-null-reference.patch
+        0004-add-pkgconfig-file.patch
+        0005-expose_server_string.patch
+        0006-mingw-static-libs.patch
+        0007-live555-formatmessage.patch
+        0008-Fix-testProgs-static-lib-link-order.patch)
+sha256sums=('08b93a20bc302bed1da2f05621f37fda962dbfc272132afa6fa1058d222c238a'
+            '5825b815ca060a6fc40ce7feaed94d87c1475371d0314fecfaeceb6b8ab14d95'
+            '65d7f5c98312d3589daa4360ae8124be8e4b2160820f1b488ca7f0fc15dc08ad'
+            '51b7580f7fe5bb35c998308832b018d7c4d2b63980fb4b813909f0e6487909c2'
+            '4cb159d384523cc5d7eaf908bd6421ae76db1aae1320dd9c445a7522cebd7cf4'
+            'b591406f83dc939f08ed9f44e269460cadba5965f31dcd18614c607c9b7548e0'
+            '9e2939ec35fb6cf5b461799f9fcfea25f73d6541e61636561e624c928422e04d'
+            'ad39d5160e6db8fe80283d4e9b1bc60eeff4bb8b3ba03dbb4cacf6f2a533bcc6'
+            'd513bf5bfc8461d331ce1c6f714c84d67c555b60b4231a6a6ec8166ccc8df7ab')
+
+prepare() {
+  cd ${srcdir}/live
+
+  # Patch for MSG_NOSIGNAL
+  patch -p1 -i ${srcdir}/0001-live555-nosignal.patch
+  # Don't use FormatMessageA on WinRT
+  patch -p1 -i ${srcdir}/0002-winstore.patch
+  # Don't rely on undefined behaviors
+  patch -p1 -i ${srcdir}/0003-no-null-reference.patch
+  # Add a pkg-config file
+  [[ -f live555.pc.in ]] && rm -f live555.pc.in
+  patch -p1 -i ${srcdir}/0004-add-pkgconfig-file.patch
+  # Expose Server:
+  patch -p1 -i ${srcdir}/0005-expose_server_string.patch
+  # Fix creating static libs on mingw
+  patch -p1 -i ${srcdir}/0006-mingw-static-libs.patch
+  # FormatMessageA is available on all Windows versions, even WinRT
+  patch -p1 -i ${srcdir}/0007-live555-formatmessage.patch
+  patch -p1 -i ${srcdir}/0008-Fix-testProgs-static-lib-link-order.patch
+}
 
 build() {
+  set -x
   cd ${srcdir}/live
   [[ -d "${srcdir}"/build-${CARCH} ]] && rm -rf "${srcdir}"/build-${CARCH}
   mkdir -p "${srcdir}"/build-${CARCH} && cd "${srcdir}"/build-${CARCH}
-  cp -rf ${srcdir}/live/* "${srcdir}"/build-${CARCH}
+  # This cp is necessary since these are symlink targets but get extracted
+  # later. While this shouldn't matter (symlink targets are allowed not to
+  # exist on Windows as per Unix), it currently does as various MSYS2 tools
+  # pre-date working Windows symlinks.
+  cp ${srcdir}/live/COPYING* .
+  rsync -rav ${srcdir}/live/* .
+  for dir in BasicUsageEnvironment groupsock liveMedia UsageEnvironment mediaServer proxyServer testProgs; do
+    pushd ${dir}
+      for MAKEFILE in Makefile.head Makefile.tail; do
+        if [[ -f ${MAKEFILE} ]]; then
+          sed -i "s|PREFIX = /usr/local|PREFIX = ${MINGW_PREFIX}|g" ${MAKEFILE}
+        fi
+      done
+    popd
+  done
   ./genMakefiles mingw
-
   make CC=gcc
 }
 
 package() {
   cd "${srcdir}"/build-${CARCH}
 
-  for dir in BasicUsageEnvironment groupsock liveMedia UsageEnvironment; do
-    install -dm755 ${pkgdir}${MINGW_PREFIX}/{bin,lib,include/${dir}}
-    install -m644 ${dir}/*.a "${pkgdir}${MINGW_PREFIX}/lib"
-    install -m644 ${dir}/include/*.h* "${pkgdir}${MINGW_PREFIX}/include/${dir}"
-  done
+  make install DESTDIR=${pkgdir}
+  make install_shared_libraries DESTDIR=${pkgdir}
 
-  for testprog in `find testProgs -type f -perm 755`; do
-    install ${testprog} "${pkgdir}${MINGW_PREFIX}/bin"
-  done
+  mkdir -p "${pkgdir}${MINGW_PREFIX}/share/pkgconfig"  
+  install -m644 ${pkgdir}/pkgconfig/*.pc "${pkgdir}${MINGW_PREFIX}/share/pkgconfig"
+  rm -rf ${pkgdir}/pkgconfig
+
+  # for testprog in `find testProgs -type f -perm 755`; do
+  #   install ${testprog} "${pkgdir}${MINGW_PREFIX}/bin"
+  # done
 }
