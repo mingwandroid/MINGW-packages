@@ -1,0 +1,41 @@
+From 58582fd1c632b85c865c5e0d400125d222d65f2f Mon Sep 17 00:00:00 2001
+From: Ray Donnelly <mingw.android@gmail.com>
+Date: Wed, 17 Feb 2021 18:58:10 +0100
+Subject: [PATCH 30/30] Compat fixes for live555 2021.02.11
+
+---
+ configure.ac               | 2 +-
+ modules/access/live555.cpp | 4 +++-
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index a82c956c70..ff06415f2f 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -2010,7 +2010,7 @@ AC_ARG_ENABLE([live555],
+     [enable RTSP input through live555 (default enabled)]))
+ 
+ AS_IF([test "${enable_live555}" != "no" -a -n "${CXX}"], [
+-  PKG_CHECK_MODULES(LIVE555, live555, [
++  PKG_CHECK_MODULES_STATIC(LIVE555, live555, [
+     VLC_ADD_PLUGIN([live555])
+     VLC_ADD_CXXFLAGS([live555], [$LIVE555_CFLAGS])
+     VLC_ADD_LIBS([live555],[$LIVE555_LIBS])
+diff --git a/modules/access/live555.cpp b/modules/access/live555.cpp
+index 01c535ca5b..967d813f04 100644
+--- a/modules/access/live555.cpp
++++ b/modules/access/live555.cpp
+@@ -850,7 +850,9 @@ static int SessionsSetup( demux_t *p_demux )
+             if( !p_sys->b_multicast )
+             {
+                 /* We need different rollover behaviour for multicast */
+-                p_sys->b_multicast = IsMulticastAddress( sub->connectionEndpointAddress() );
++                struct sockaddr_storage sas;
++                sub->getConnectionEndpointAddress(sas);
++                p_sys->b_multicast = IsMulticastAddress(sas);
+             }
+ 
+             tk = (live_track_t*)malloc( sizeof( live_track_t ) );
+-- 
+2.30.1.windows.1
+
